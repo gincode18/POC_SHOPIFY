@@ -44,7 +44,7 @@ function init(analytics) {
     };
     
     // Send to webhook endpoint
-    fetch('https://' + (process.env.VERCEL_URL || req.get('host')) + '/webhook/shopify-events', {
+    fetch('https://poc-shopify-wheat.vercel.app/webhook/shopify-events', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

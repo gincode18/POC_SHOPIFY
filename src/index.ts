@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import cors from "cors";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,12 +9,7 @@ app.use(express.json());
 app.use(express.raw({ type: 'application/json' }));
 
 // CORS middleware for serving JavaScript
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  next();
-});
+app.use(cors());
 
 // Pixel script endpoint - serves the JavaScript that will be imported by Shopify
 app.get("/pixel-script", (req: Request, res: Response) => {

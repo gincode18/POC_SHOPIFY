@@ -23,10 +23,12 @@ app.get("/pixel-script", (req: Request, res: Response) => {
 // Shopify Pixel Script
 console.log('Custom pixel script loaded for shop: ${shopId}');
 
-console.log('Initializing custom pixel analytics');
-
-// Subscribe to all Shopify events
-analytics.subscribe('all_events', (event) => {
+// Initialize function that will be exported
+function init(analytics) {
+  console.log('Initializing custom pixel analytics');
+  
+  // Subscribe to all Shopify events
+  analytics.subscribe('all_events', (event) => {
     console.log('Shopify event captured:', event.name, event);
     
     // Prepare payload for webhook
@@ -42,7 +44,7 @@ analytics.subscribe('all_events', (event) => {
     };
     
     // Send to webhook endpoint
-    fetch('https://${req.get('host')}/webhook/shopify-events', {
+    fetch('https://' + (process.env.VERCEL_URL || req.get('host')) + '/webhook/shopify-events', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,7 +56,11 @@ analytics.subscribe('all_events', (event) => {
     });
   });
   
-console.log('Custom pixel initialized successfully');
+  console.log('Custom pixel initialized successfully');
+}
+
+// Export the init function for Shopify to use
+export { init };
 `;
 
   res.send(pixelScript);
@@ -110,7 +116,10 @@ app.get("/", (req: Request, res: Response) => {
 
 // Instructions endpoint
 app.get("/instructions", (req: Request, res: Response) => {
-  const serverUrl = `${req.protocol}://${req.get('host')}`;
+  // Get the host for the script - use VERCEL_URL if available
+  const host = process.env.VERCEL_URL || req.get('host');
+  const protocol = process.env.VERCEL_URL ? 'https' : req.protocol;
+  const serverUrl = `${protocol}://${host}`;
   
   res.json({
     title: "How to use this Shopify Pixel Server",

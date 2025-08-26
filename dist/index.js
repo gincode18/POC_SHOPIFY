@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const crypto_1 = __importDefault(require("crypto"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
 // Middleware
@@ -22,10 +23,12 @@ app.get("/pixel-script", (req, res) => {
 // Shopify Pixel Script
 console.log('Custom pixel script loaded for shop: ${shopId}');
 
-console.log('Initializing custom pixel analytics');
-
-// Subscribe to all Shopify events
-analytics.subscribe('all_events', (event) => {
+// Initialize function that will be exported
+function init(analytics) {
+  console.log('Initializing custom pixel analytics');
+  
+  // Subscribe to all Shopify events
+  analytics.subscribe('all_events', (event) => {
     console.log('Shopify event captured:', event.name, event);
     
     // Prepare payload for webhook
@@ -41,7 +44,7 @@ analytics.subscribe('all_events', (event) => {
     };
     
     // Send to webhook endpoint
-    fetch('https://${req.get('host')}/webhook/shopify-events', {
+    fetch('https://poc-shopify-wheat.vercel.app/webhook/shopify-events', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -53,7 +56,11 @@ analytics.subscribe('all_events', (event) => {
     });
   });
   
-console.log('Custom pixel initialized successfully');
+  console.log('Custom pixel initialized successfully');
+}
+
+// Export the init function for Shopify to use
+export { init };
 `;
     res.send(pixelScript);
 });
@@ -89,20 +96,124 @@ app.post("/webhook/shopify-events", (req, res) => {
         });
     }
 });
+// Shopify App Configuration
+const SHOPIFY_APP_CONFIG = {
+    clientId: "181a611e074aaa1904c7ed0b88ce4952", // Your client ID from app.toml
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET || "", // REQUIRED: Set this in environment variables
+    scopes: "write_pixels,read_customer_events",
+    redirectUri: "https://poc-shopify-wheat.vercel.app/shopify/auth/callback"
+};
+// Validate required environment variables
+if (!SHOPIFY_APP_CONFIG.clientSecret) {
+    console.error('❌ SHOPIFY_CLIENT_SECRET environment variable is required for real token exchange');
+    console.log('💡 Set it in Vercel dashboard or locally: export SHOPIFY_CLIENT_SECRET="your-secret"');
+}
+// Install shopify using app store - simplified mock version
+app.get('/shopify/install/direct', (req, res) => {
+    const shop = req.query.shop || 'nabiqtesting.myshopify.com'; // Mock shop
+    console.log(`🔄 Starting Shopify OAuth flow for shop: ${shop}`);
+    // Generate state for CSRF protection
+    const state = crypto_1.default.randomBytes(16).toString('hex');
+    // Build Shopify OAuth URL
+    const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+    authUrl.searchParams.append('client_id', SHOPIFY_APP_CONFIG.clientId);
+    authUrl.searchParams.append('scope', SHOPIFY_APP_CONFIG.scopes);
+    authUrl.searchParams.append('redirect_uri', SHOPIFY_APP_CONFIG.redirectUri);
+    authUrl.searchParams.append('state', state);
+    console.log(`📝 OAuth URL generated: ${authUrl.toString()}`);
+    // In a real app, you'd store the state in session/database
+    // For this mock, we'll just log it
+    console.log(`🔐 Generated state: ${state}`);
+    // Redirect to Shopify OAuth
+    res.redirect(302, authUrl.toString());
+});
+// Shopify app Callback validation and store installation - simplified mock
+app.get('/shopify/auth/callback', async (req, res) => {
+    try {
+        const { code, shop, state } = req.query;
+        console.log(`🔄 Processing OAuth callback for shop: ${shop}`);
+        console.log(`📝 Received authorization code: ${code}`);
+        console.log(`🔐 Received state: ${state}`);
+        if (!code || !shop) {
+            throw new Error('Missing required parameters: code or shop');
+        }
+        // Real token exchange with Shopify API
+        const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                client_id: SHOPIFY_APP_CONFIG.clientId,
+                client_secret: SHOPIFY_APP_CONFIG.clientSecret,
+                code: code
+            })
+        });
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            throw new Error(`Token exchange failed: ${tokenResponse.status} - ${errorText}`);
+        }
+        const tokenData = await tokenResponse.json();
+        // Log the real access token from Shopify
+        console.log('🎉 ===== SHOPIFY AUTHENTICATION SUCCESS =====');
+        console.log(`🏪 Shop: ${shop}`);
+        console.log(`🔑 Access Token: ${tokenData.access_token}`);
+        console.log(`📊 Granted Scopes: ${tokenData.scope}`);
+        console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+        if (tokenData.associated_user) {
+            console.log(`👤 User: ${tokenData.associated_user.first_name} ${tokenData.associated_user.last_name} (${tokenData.associated_user.email})`);
+        }
+        console.log('===============================================');
+        // In a real app, you'd:
+        // 1. Store the access token in your database
+        // 2. Associate it with the shop
+        // 3. Set up any required webhooks
+        // Mock successful installation
+        const success = true;
+        const redirectUri = `https://${shop}/admin/apps`; // Redirect to Shopify admin apps page
+        if (success) {
+            console.log(`✅ Installation successful, redirecting to: ${redirectUri}`);
+            // Set a simple response header to indicate successful installation
+            res.setHeader('X-Shopify-Installation', 'success');
+            // Redirect to Shopify dashboard/apps page
+            return res.redirect(302, redirectUri);
+        }
+        throw new Error('Failed to verify installation');
+    }
+    catch (error) {
+        console.error('❌ OAuth callback error:', error);
+        res.status(500).json({
+            error: 'Authentication failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+        });
+    }
+});
 // Health check endpoint
 app.get("/", (req, res) => {
     res.json({
         status: "healthy",
-        message: "Shopify Pixel Server POC",
+        message: "Shopify Pixel Server POC with Authentication",
         endpoints: {
             pixelScript: "/pixel-script?shop=YOUR_SHOP_ID",
-            webhook: "/webhook/shopify-events"
+            webhook: "/webhook/shopify-events",
+            install: "/shopify/install/direct?shop=YOUR_SHOP.myshopify.com",
+            callback: "/shopify/auth/callback"
+        },
+        shopifyApp: {
+            clientId: SHOPIFY_APP_CONFIG.clientId,
+            scopes: SHOPIFY_APP_CONFIG.scopes,
+            redirectUri: SHOPIFY_APP_CONFIG.redirectUri
         }
     });
 });
 // Instructions endpoint
 app.get("/instructions", (req, res) => {
-    const serverUrl = `${req.protocol}://${req.get('host')}`;
+    // Get the host for the script - use VERCEL_URL if available
+    const host = process.env.VERCEL_URL || req.get('host');
+    const protocol = process.env.VERCEL_URL ? 'https' : req.protocol;
+    const serverUrl = `${protocol}://${host}`;
     res.json({
         title: "How to use this Shopify Pixel Server",
         steps: [

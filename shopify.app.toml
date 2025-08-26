@@ -1,0 +1,25 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "181a611e074aaa1904c7ed0b88ce4952"
+name = "pixel-extension-app"
+application_url = "https://poc-shopify-wheat.vercel.app"
+embedded = true
+handle = "pixel-extension-app"
+
+[build]
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2025-07"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_pixels,read_customer_events"
+
+[auth]
+redirect_urls = [
+  "https://poc-shopify-wheat.vercel.app/shopify/auth/callback"
+]
+
+[pos]
+embedded = false

@@ -15,7 +15,8 @@
   "packageManager": "pnpm@10.11.1",
   "dependencies": {
     "express": "^5.1.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "@shopify/shopify-api": "^11.6.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

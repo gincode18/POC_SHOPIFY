@@ -120,31 +120,31 @@ if (!SHOPIFY_APP_CONFIG.clientSecret) {
   );
 }
 
-// Install shopify using app store - simplified mock version
-app.get("/shopify/install/direct", (req: Request, res: Response) => {
-  const shop = (req.query.shop as string) || "nabiqtesting.myshopify.com"; // Mock shop
+// // Install shopify using app store - simplified mock version
+// app.get("/shopify/install/direct", (req: Request, res: Response) => {
+//   const shop = (req.query.shop as string) || "nabiqtesting.myshopify.com"; // Mock shop
 
-  console.log(`🔄 Starting Shopify OAuth flow for shop: ${shop}`);
+//   console.log(`🔄 Starting Shopify OAuth flow for shop: ${shop}`);
 
-  // Generate state for CSRF protection
-  const state = crypto.randomBytes(16).toString("hex");
+//   // Generate state for CSRF protection
+//   const state = crypto.randomBytes(16).toString("hex");
 
-  // Build Shopify OAuth URL
-  const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
-  authUrl.searchParams.append("client_id", SHOPIFY_APP_CONFIG.clientId);
-  authUrl.searchParams.append("scope", SHOPIFY_APP_CONFIG.scopes);
-  authUrl.searchParams.append("redirect_uri", SHOPIFY_APP_CONFIG.redirectUri);
-  authUrl.searchParams.append("state", state);
+//   // Build Shopify OAuth URL
+//   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+//   authUrl.searchParams.append("client_id", SHOPIFY_APP_CONFIG.clientId);
+//   authUrl.searchParams.append("scope", SHOPIFY_APP_CONFIG.scopes);
+//   authUrl.searchParams.append("redirect_uri", SHOPIFY_APP_CONFIG.redirectUri);
+//   authUrl.searchParams.append("state", state);
 
-  console.log(`📝 OAuth URL generated: ${authUrl.toString()}`);
+//   console.log(`📝 OAuth URL generated: ${authUrl.toString()}`);
 
-  // In a real app, you'd store the state in session/database
-  // For this mock, we'll just log it
-  console.log(`🔐 Generated state: ${state}`);
+//   // In a real app, you'd store the state in session/database
+//   // For this mock, we'll just log it
+//   console.log(`🔐 Generated state: ${state}`);
 
-  // Redirect to Shopify OAuth
-  res.redirect(302, authUrl.toString());
-});
+//   // Redirect to Shopify OAuth
+//   res.redirect(302, authUrl.toString());
+// });
 
 // Shopify app Callback validation and store installation - simplified mock
 app.get("/shopify/auth/callback", async (req: Request, res: Response) => {
@@ -228,11 +228,65 @@ app.get("/shopify/auth/callback", async (req: Request, res: Response) => {
   }
 });
 
-// Health check endpoint
+// HMAC verification function
+function verifyHmac(query: any, secret: string): boolean {
+  const { hmac, ...params } = query;
+  
+  if (!hmac) return false;
+  
+  // Create query string without hmac, sorted alphabetically
+  const sortedParams = Object.keys(params)
+    .sort()
+    .map(key => `${key}=${params[key]}`)
+    .join('&');
+  
+  // Calculate HMAC
+  const calculatedHmac = crypto
+    .createHmac('sha256', secret)
+    .update(sortedParams)
+    .digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(calculatedHmac),
+    Buffer.from(hmac as string)
+  );
+}
+
+// Root route - handles post-installation redirect from Shopify
 app.get("/", (req: Request, res: Response) => {
+  const { shop, hmac, timestamp, host } = req.query;
+  
+  // If we have HMAC parameters, this is a post-installation redirect
+  if (hmac && shop && timestamp) {
+    console.log(`🔄 Post-installation redirect for shop: ${shop}`);
+    console.log(`🔐 Verifying HMAC...`);
+    
+    // Verify HMAC to ensure request is from Shopify
+    const isValidHmac = verifyHmac(req.query, SHOPIFY_APP_CONFIG.clientSecret);
+    
+    if (!isValidHmac) {
+      console.error('❌ Invalid HMAC - request not from Shopify');
+      return res.status(401).json({ error: 'Invalid HMAC' });
+    }
+    
+    console.log('✅ HMAC verified - request is from Shopify');
+    
+    // Check if we already have an access token for this shop
+    // For now, we'll always redirect to OAuth to get a fresh token
+    const oauthUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+    oauthUrl.searchParams.append('client_id', SHOPIFY_APP_CONFIG.clientId);
+    oauthUrl.searchParams.append('scope', SHOPIFY_APP_CONFIG.scopes);
+    oauthUrl.searchParams.append('redirect_uri', SHOPIFY_APP_CONFIG.redirectUri);
+    oauthUrl.searchParams.append('state', crypto.randomBytes(16).toString('hex'));
+    
+    console.log(`🔄 Redirecting to OAuth: ${oauthUrl.toString()}`);
+    return res.redirect(302, oauthUrl.toString());
+  }
+  
+  // Default health check response
   res.json({
     status: "healthy",
-    message: "Shopify Pixel Server POC with Authentication",
+    message: "Shopify Pixel Server POC - Non-Embedded App",
     endpoints: {
       pixelScript: "/pixel-script?shop=YOUR_SHOP_ID",
       webhook: "/webhook/shopify-events",
@@ -243,6 +297,7 @@ app.get("/", (req: Request, res: Response) => {
       clientId: SHOPIFY_APP_CONFIG.clientId,
       scopes: SHOPIFY_APP_CONFIG.scopes,
       redirectUri: SHOPIFY_APP_CONFIG.redirectUri,
+      embedded: false
     },
   });
 });

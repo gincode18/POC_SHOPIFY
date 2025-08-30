@@ -71,6 +71,7 @@ export { init };
 app.post("/webhook/shopify-events", (req: Request, res: Response) => {
   try {
     const eventData = req.body;
+    console.dir(req, { depth: null });
 
     // Log the received event
     console.log("=== SHOPIFY EVENT RECEIVED ===");
@@ -231,21 +232,21 @@ app.get("/shopify/auth/callback", async (req: Request, res: Response) => {
 // HMAC verification function
 function verifyHmac(query: any, secret: string): boolean {
   const { hmac, ...params } = query;
-  
+
   if (!hmac) return false;
-  
+
   // Create query string without hmac, sorted alphabetically
   const sortedParams = Object.keys(params)
     .sort()
-    .map(key => `${key}=${params[key]}`)
-    .join('&');
-  
+    .map((key) => `${key}=${params[key]}`)
+    .join("&");
+
   // Calculate HMAC
   const calculatedHmac = crypto
-    .createHmac('sha256', secret)
+    .createHmac("sha256", secret)
     .update(sortedParams)
-    .digest('hex');
-  
+    .digest("hex");
+
   return crypto.timingSafeEqual(
     Buffer.from(calculatedHmac),
     Buffer.from(hmac as string)
@@ -255,34 +256,40 @@ function verifyHmac(query: any, secret: string): boolean {
 // Root route - handles post-installation redirect from Shopify
 app.get("/", (req: Request, res: Response) => {
   const { shop, hmac, timestamp, host } = req.query;
-  
+
   // If we have HMAC parameters, this is a post-installation redirect
   if (hmac && shop && timestamp) {
     console.log(`🔄 Post-installation redirect for shop: ${shop}`);
     console.log(`🔐 Verifying HMAC...`);
-    
+
     // Verify HMAC to ensure request is from Shopify
     const isValidHmac = verifyHmac(req.query, SHOPIFY_APP_CONFIG.clientSecret);
-    
+
     if (!isValidHmac) {
-      console.error('❌ Invalid HMAC - request not from Shopify');
-      return res.status(401).json({ error: 'Invalid HMAC' });
+      console.error("❌ Invalid HMAC - request not from Shopify");
+      return res.status(401).json({ error: "Invalid HMAC" });
     }
-    
-    console.log('✅ HMAC verified - request is from Shopify');
-    
+
+    console.log("✅ HMAC verified - request is from Shopify");
+
     // Check if we already have an access token for this shop
     // For now, we'll always redirect to OAuth to get a fresh token
     const oauthUrl = new URL(`https://${shop}/admin/oauth/authorize`);
-    oauthUrl.searchParams.append('client_id', SHOPIFY_APP_CONFIG.clientId);
-    oauthUrl.searchParams.append('scope', SHOPIFY_APP_CONFIG.scopes);
-    oauthUrl.searchParams.append('redirect_uri', SHOPIFY_APP_CONFIG.redirectUri);
-    oauthUrl.searchParams.append('state', crypto.randomBytes(16).toString('hex'));
-    
+    oauthUrl.searchParams.append("client_id", SHOPIFY_APP_CONFIG.clientId);
+    oauthUrl.searchParams.append("scope", SHOPIFY_APP_CONFIG.scopes);
+    oauthUrl.searchParams.append(
+      "redirect_uri",
+      SHOPIFY_APP_CONFIG.redirectUri
+    );
+    oauthUrl.searchParams.append(
+      "state",
+      crypto.randomBytes(16).toString("hex")
+    );
+
     console.log(`🔄 Redirecting to OAuth: ${oauthUrl.toString()}`);
     return res.redirect(302, oauthUrl.toString());
   }
-  
+
   // Default health check response
   res.json({
     status: "healthy",
@@ -297,7 +304,7 @@ app.get("/", (req: Request, res: Response) => {
       clientId: SHOPIFY_APP_CONFIG.clientId,
       scopes: SHOPIFY_APP_CONFIG.scopes,
       redirectUri: SHOPIFY_APP_CONFIG.redirectUri,
-      embedded: false
+      embedded: false,
     },
   });
 });
